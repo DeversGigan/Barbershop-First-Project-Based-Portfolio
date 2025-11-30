@@ -26,8 +26,9 @@ import {
 import { CalendarIcon, Check, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
-// todo: remove mock functionality
 const services = [
   { value: "classic-cut", label: "Classic Cut - $35" },
   { value: "fade-taper", label: "Fade & Taper - $40" },
@@ -69,7 +70,6 @@ interface BookingModalProps {
 
 export default function BookingModal({ open, onOpenChange }: BookingModalProps) {
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [date, setDate] = useState<Date>();
   const [formData, setFormData] = useState({
@@ -79,6 +79,49 @@ export default function BookingModal({ open, onOpenChange }: BookingModalProps) 
     service: "",
     time: "",
     notes: "",
+  });
+
+  const bookingMutation = useMutation({
+    mutationFn: async (data: {
+      name: string;
+      phone: string;
+      email: string | null;
+      service: string;
+      date: string;
+      time: string;
+      notes: string | null;
+    }) => {
+      const response = await apiRequest("POST", "/api/bookings", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      setIsSuccess(true);
+      setTimeout(() => {
+        setIsSuccess(false);
+        onOpenChange(false);
+        setFormData({
+          name: "",
+          phone: "",
+          email: "",
+          service: "",
+          time: "",
+          notes: "",
+        });
+        setDate(undefined);
+        toast({
+          title: "Booking Confirmed!",
+          description: "We'll send you a confirmation shortly.",
+        });
+      }, 2000);
+    },
+    onError: (error) => {
+      toast({
+        title: "Booking Failed",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+      console.error("Booking error:", error);
+    },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,37 +136,19 @@ export default function BookingModal({ open, onOpenChange }: BookingModalProps) 
       return;
     }
 
-    setIsSubmitting(true);
-
-    // todo: remove mock functionality - integrate with actual API
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    console.log("Booking submitted:", { ...formData, date });
-
-    setIsSubmitting(false);
-    setIsSuccess(true);
-
-    setTimeout(() => {
-      setIsSuccess(false);
-      onOpenChange(false);
-      setFormData({
-        name: "",
-        phone: "",
-        email: "",
-        service: "",
-        time: "",
-        notes: "",
-      });
-      setDate(undefined);
-      toast({
-        title: "Booking Confirmed!",
-        description: "We'll send you a confirmation shortly.",
-      });
-    }, 2000);
+    bookingMutation.mutate({
+      name: formData.name,
+      phone: formData.phone,
+      email: formData.email || null,
+      service: formData.service,
+      date: format(date, "yyyy-MM-dd"),
+      time: formData.time,
+      notes: formData.notes || null,
+    });
   };
 
   const handleClose = () => {
-    if (!isSubmitting) {
+    if (!bookingMutation.isPending) {
       onOpenChange(false);
       setIsSuccess(false);
     }
@@ -316,10 +341,10 @@ export default function BookingModal({ open, onOpenChange }: BookingModalProps) 
                 type="submit"
                 className="w-full uppercase tracking-wider text-xs font-semibold"
                 size="lg"
-                disabled={isSubmitting}
+                disabled={bookingMutation.isPending}
                 data-testid="button-confirm-booking"
               >
-                {isSubmitting ? (
+                {bookingMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Processing...
